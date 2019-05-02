@@ -1,6 +1,10 @@
 const scheduler = require('node-schedule');
 let SCHEDULE = [];
 
+var Recognizers = require('@microsoft/recognizers-text-date-time');
+
+const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July','August', 'September', 'October', 'November',' December'];
+const DAYS = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
 
 module.exports = function(controller) {
 
@@ -11,13 +15,12 @@ module.exports = function(controller) {
         if (schedule.type === 'repeating') {
             let cron = schedule.cron;
             scheduler.scheduleJob(`0 ${ cron.minute } ${ cron.hour } ${ cron.dayOfMonth } ${ cron.month } ${ cron.dayOfWeek }`, runSchedule(idx));
-        } 
+        }
         if (schedule.type === 'once') {
             let cron = schedule.cron;
             let date = new Date(2019, cron.month, cron.dayOfMonth, cron.hour, cron.minute, 0);
             scheduler.scheduleJob(date, runSchedule(idx));
         }
-
     }
 
     function runSchedule(idx) {
@@ -32,6 +35,10 @@ module.exports = function(controller) {
 
     controller.hears([async(message) => { return message.intent === 'AddReminder' },new RegExp(/^remind me/i)], 'message, direct_message, direct_mention', async(bot, message) => {
 
+
+        // let local_parse = Recognizers.recognizeDateTime(message.text, Recognizers.Culture.English);
+        // console.log('LOCAL PARSE', JSON.stringify(local_parse, null, 2));
+
         await bot.reply(message,'Sounds like you want to create a reminder!');
 
         if (message.luis.entities && message.luis.entities.datetime) {
@@ -42,11 +49,13 @@ module.exports = function(controller) {
 
             schedule.cron = scheduleToCron(schedule);
 
+            schedule.description = scheduleToDescription(schedule);
+
             schedule.reference = message.reference;
 
             await addSchedule(schedule);
-
-            await bot.reply(message, '```' + JSON.stringify(schedule, null, 2) + '```');
+            await bot.reply(message, schedule.description);
+            // await bot.reply(message, '```' + JSON.stringify(schedule, null, 2) + '```');
         } else {
             await bot.reply(message,'To create a reminder, say something like `remind me to walk the dog every day at 5pm`');
         }
@@ -79,6 +88,42 @@ module.exports = function(controller) {
         }
 
         return schedule;
+
+    }
+
+    function scheduleToDescription(schedule) {
+
+        let time = schedule.time;
+        let cron = schedule.cron;
+        if (schedule.type === 'once') {
+            return "I will remind you about " + schedule.subject + " at " + cron.hour + ":" + cron.minute + " on "  + (cron.month+1) + "/" + cron.dayOfMonth;
+        } else {
+            let bits = ['I will remind you about ' + schedule.subject];
+            if (time.dayofweek) {
+                bits.push('every ' + DAYS[time.dayofweek]);
+            } else {
+                // bits.push('every day');
+            }
+            if (time.date && time.date !== '*') {
+                bits.push('on the ' + time.date);
+                if (time.month) {
+                    bits.push('of ' + MONTHS[time.month - 1]);
+                } else {
+                    bits.push('every month');
+                }
+            } else {
+                if (time.month) {
+                    bits.push('of ' + MONTHS[time.month - 1]);
+                }
+            }
+            if (time.hour) {
+                bits.push('at ' + time.hour + ':' + time.minute || '00');
+            } else {
+                bits.push('at 9am')
+            }
+
+            return bits.join(' ');
+        }
 
     }
 
@@ -119,7 +164,7 @@ module.exports = function(controller) {
 
                 if (timex.match(/^....-(\d\d)/)) {
                     let match = timex.match(/^....-(\d\d)/);
-                    schedule.month = parseInt(match[1]);
+                    schedule.month = parseInt(match[1]) - 1;
                 }
         
                 if (timex.match(/^....-..-(\d\d)/)) {
@@ -191,7 +236,7 @@ module.exports = function(controller) {
         
                 if (timex.match(/^....-(\d\d)/)) {
                     let match = timex.match(/^....-(\d\d)/);
-                    schedule.month = parseInt(match[1]);
+                    schedule.month = parseInt(match[1]) - 1;
                 }
         
                 if (timex.match(/^....-..-(\d\d)/)) {
@@ -250,7 +295,7 @@ module.exports = function(controller) {
 
         if (timex.match(/^....-(\d\d)/)) {
             let match = timex.match(/^....-(\d\d)/);
-            time.month = parseInt(match[1]);
+            time.month = parseInt(match[1]) - 1;
         }
 
         if (timex.match(/^....-..-(\d\d)/)) {
@@ -306,7 +351,7 @@ module.exports = function(controller) {
             schedule.time.month = weekdate.getMonth();
         }
 
-        console.log('translate', schedule);
+        // console.log('translate', schedule);
 
         // if a specific hour was specified, set it.
         // otherwise, default to 9am
